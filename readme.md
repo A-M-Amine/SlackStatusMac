@@ -1,6 +1,6 @@
 # SlackStatusMac
 
-> If you find this project useful, please consider giving it a ⭐️ on GitHub.
+> If you find this script useful, please consider giving it a ⭐️ on GitHub.
 
 SlackStatusMac is an automated Slack status updater for macOS. It updates your Slack status according to your device’s physical location and defined working hours, ensuring accurate visibility of your work presence.
 
