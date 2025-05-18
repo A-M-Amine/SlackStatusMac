@@ -62,18 +62,21 @@ def haversine(lat1, lon1, lat2, lon2):
     return 6371 * c
 
 def get_location():
-    delegate = LocationDelegate.alloc().init()
-    manager = CLLocationManager.alloc().init()
-    manager.setDelegate_(delegate)
-    manager.requestWhenInUseAuthorization()
-    manager.startUpdatingLocation()
-    timeout = 10
-    start = time.time()
-    while not delegate.has_location and (time.time() - start < timeout):
-        NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.1))
-    manager.stopUpdatingLocation()
-    if hasattr(delegate, "latitude") and hasattr(delegate, "longitude"):
-        return delegate.latitude, delegate.longitude
+    try:
+        delegate = LocationDelegate.alloc().init()
+        manager = CLLocationManager.alloc().init()
+        manager.setDelegate_(delegate)
+        manager.requestWhenInUseAuthorization()
+        manager.startUpdatingLocation()
+        timeout = 10
+        start = time.time()
+        while not delegate.has_location and (time.time() - start < timeout):
+            NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.1))
+        manager.stopUpdatingLocation()
+        if hasattr(delegate, "latitude") and hasattr(delegate, "longitude"):
+            return delegate.latitude, delegate.longitude
+    except Exception as e:
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Location error: {e}")
     return None, None
 
 def get_status_from_location(lat, lon):
@@ -85,37 +88,46 @@ def get_status_from_location(lat, lon):
     return REMOTE_STATUS
 
 def update_slack_status(text, emoji):
-    url = 'https://slack.com/api/users.profile.set'
-    headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
-    profile = {"status_text": text, "status_emoji": emoji, "status_expiration": 0}
-    data = {"profile": json.dumps(profile)}
-    response = requests.post(url, headers=headers, data=data)
-    return response.ok
+    try:
+        url = 'https://slack.com/api/users.profile.set'
+        headers = {"Authorization": f"Bearer {SLACK_TOKEN}"}
+        profile = {"status_text": text, "status_emoji": emoji, "status_expiration": 0}
+        data = {"profile": json.dumps(profile)}
+        response = requests.post(url, headers=headers, data=data, timeout=10)
+        if not response.ok:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Slack status update failed (HTTP error)")
+        return response.ok
+    except Exception as e:
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Slack API error: {e}")
+        return False
 
 def main():
     today = None
     last_status = None
     while True:
-        now = datetime.now()
-        if now.weekday() in WEEKEND_DAYS:
-            if today != now.date():
-                print(f"{now.strftime('%Y-%m-%d')} is a weekend. Skipping status updates today.")
-                today = now.date()
-            time.sleep(61)
-            continue
-        if ACTIVE_HOURS[0] <= now.hour <= ACTIVE_HOURS[1]:
-            if today != now.date():
-                last_status = None
-                today = now.date()
-            lat, lon = get_location()
-            status = get_status_from_location(lat, lon)
-            status_tuple = (status["status_text"], status["status_emoji"])
-            if last_status != status_tuple:
-                if update_slack_status(status["status_text"], status["status_emoji"]):
-                    print(f"{now.strftime('%Y-%m-%d %H:%M:%S')} Status changed to: {status['status_text']} {status['status_emoji']}")
-                else:
-                    print(f"{now.strftime('%Y-%m-%d %H:%M:%S')} Slack status update failed.")
-                last_status = status_tuple
+        try:
+            now = datetime.now()
+            if now.weekday() in WEEKEND_DAYS:
+                if today != now.date():
+                    print(f"{now.strftime('%Y-%m-%d')} is a weekend. Skipping status updates today.")
+                    today = now.date()
+                time.sleep(61)
+                continue
+            if ACTIVE_HOURS[0] <= now.hour <= ACTIVE_HOURS[1]:
+                if today != now.date():
+                    last_status = None
+                    today = now.date()
+                lat, lon = get_location()
+                status = get_status_from_location(lat, lon)
+                status_tuple = (status["status_text"], status["status_emoji"])
+                if last_status != status_tuple:
+                    if update_slack_status(status["status_text"], status["status_emoji"]):
+                        print(f"{now.strftime('%Y-%m-%d %H:%M:%S')} Status changed to: {status['status_text']} {status['status_emoji']}")
+                        last_status = status_tuple
+                    else:
+                        print(f"{now.strftime('%Y-%m-%d %H:%M:%S')} Slack status update failed, will retry.")
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] General error: {e}")
         time.sleep(61)
 
 if __name__ == "__main__":
